@@ -1,44 +1,43 @@
 import os
 import re
-import joblib
+import string
 import streamlit as st
 from docx import Document
-from sklearn.feature_extraction.text import TfidfVectorizer
 from collections import Counter
 import matplotlib.pyplot as plt
+from sklearn.feature_extraction.text import TfidfVectorizer
+from nltk.corpus import stopwords
 
 # --------------------------
-# Helper function to extract text
+# Text Preprocessing
 # --------------------------
+stop_words = set(stopwords.words("english"))
+
 def extract_text_from_docx(docx_file):
     doc = Document(docx_file)
     return "\n".join([para.text for para in doc.paragraphs])
 
-# --------------------------
-# Helper function to clean text
-# --------------------------
-def clean_text(text):
+def preprocess(text):
     text = text.lower()
-    text = re.sub(r'[^a-z\s]', '', text)
-    return text
+    text = text.translate(str.maketrans("", "", string.punctuation))
+    words = [w for w in text.split() if w not in stop_words and not w.isdigit()]
+    return " ".join(words)
 
 # --------------------------
-# Extract topics from text
+# Topic Extraction (Bigrams + Trigrams)
 # --------------------------
-def extract_topics(text, top_n=10):
-    vectorizer = TfidfVectorizer(stop_words="english", max_features=5000)
-    X = vectorizer.fit_transform([text])
-    words = vectorizer.get_feature_names_out()
-    scores = X.toarray().flatten()
-    word_scores = dict(zip(words, scores))
-    sorted_words = sorted(word_scores.items(), key=lambda x: x[1], reverse=True)
-    return [w for w, s in sorted_words[:top_n]]
+def extract_subtopics(texts, top_n=10):
+    vectorizer = TfidfVectorizer(ngram_range=(2,3), stop_words="english", max_features=5000)
+    X = vectorizer.fit_transform(texts)
+    freqs = zip(vectorizer.get_feature_names_out(), X.sum(axis=0).tolist()[0])
+    sorted_freqs = sorted(freqs, key=lambda x: -x[1])[:top_n]
+    return sorted_freqs
 
 # --------------------------
 # Streamlit App
 # --------------------------
 st.title("📘 Past Papers Topic Analyzer & Predictor")
-st.write("Upload one or more `.docx` past papers to get topic predictions + analysis.")
+st.write("Upload one or more `.docx` past papers to get **sub-topic predictions + analysis**.")
 
 uploaded_files = st.file_uploader(
     "Upload past paper(s)",
@@ -47,17 +46,21 @@ uploaded_files = st.file_uploader(
 )
 
 if uploaded_files:
-    all_text = ""
+    all_texts = []
 
     for uploaded_file in uploaded_files:
         st.subheader(f"📄 {uploaded_file.name}")
-        text = extract_text_from_docx(uploaded_file)
-        cleaned = clean_text(text)
+        raw_text = extract_text_from_docx(uploaded_file)
+        cleaned = preprocess(raw_text)
+        all_texts.append(cleaned)
 
-        topics = extract_topics(cleaned, top_n=10)
-        st.write("**Top Predicted Topics:**", ", ".join(topics))
+        # Extract subtopics for this paper
+        subtopics = extract_subtopics([cleaned], top_n=10)
+        st.write("**Top Predicted Sub-Topics:**")
+        for topic, score in subtopics:
+            st.write(f"- {topic} ({score:.2f})")
 
-        # Show word frequency plot
+        # Show most frequent words (optional, for insight)
         words = cleaned.split()
         word_counts = Counter(words)
         common_words = word_counts.most_common(10)
@@ -68,18 +71,18 @@ if uploaded_files:
         plt.title("Most Frequent Words in Paper")
         st.pyplot(fig)
 
-        all_text += " " + cleaned
-
     # --------------------------
     # Combined Analysis
     # --------------------------
-    if len(uploaded_files) > 1:
+    if len(all_texts) > 1:
         st.subheader("📊 Combined Analysis of All Papers")
-        combined_topics = extract_topics(all_text, top_n=15)
-        st.write("**Overall Predicted Topics Across Papers:**", ", ".join(combined_topics))
+        combined_subtopics = extract_subtopics(all_texts, top_n=15)
+        st.write("**Overall Predicted Sub-Topics Across Papers:**")
+        for topic, score in combined_subtopics:
+            st.write(f"- {topic} ({score:.2f})")
 
-        words = all_text.split()
-        word_counts = Counter(words)
+        combined_words = " ".join(all_texts).split()
+        word_counts = Counter(combined_words)
         common_words = word_counts.most_common(15)
 
         fig, ax = plt.subplots()
@@ -87,4 +90,3 @@ if uploaded_files:
         plt.xticks(rotation=45)
         plt.title("Most Frequent Words Across All Papers")
         st.pyplot(fig)
-
