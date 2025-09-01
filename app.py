@@ -32,12 +32,30 @@ def preprocess(text):
 # --------------------------
 # Topic Extraction (Bigrams + Trigrams)
 # --------------------------
+from sklearn.feature_extraction.text import TfidfVectorizer
+
+
 def extract_subtopics(texts, top_n=10):
-    vectorizer = TfidfVectorizer(ngram_range=(2,3), stop_words="english", max_features=5000)
+    custom_stopwords = [
+        "marks", "section", "question", "answer",
+        "explain", "state", "give", "paper"
+    ]
+
+    vectorizer = TfidfVectorizer(
+        ngram_range=(2, 3),  # look for 2-3 word phrases
+        stop_words="english",  # built-in stopwords
+        max_features=5000
+    )
+
     X = vectorizer.fit_transform(texts)
     freqs = zip(vectorizer.get_feature_names_out(), X.sum(axis=0).tolist()[0])
-    sorted_freqs = sorted(freqs, key=lambda x: -x[1])[:top_n]
+
+    # filter out custom stopwords manually
+    filtered_freqs = [(word, freq) for word, freq in freqs if word not in custom_stopwords]
+
+    sorted_freqs = sorted(filtered_freqs, key=lambda x: -x[1])[:top_n]
     return sorted_freqs
+
 
 # --------------------------
 # Streamlit App
