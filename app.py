@@ -11,6 +11,12 @@ from nltk.corpus import stopwords
 # --------------------------
 # Text Preprocessing
 # --------------------------
+import nltk
+from nltk.corpus import stopwords
+
+# Download stopwords if not already available
+nltk.download('stopwords')
+
 stop_words = set(stopwords.words("english"))
 
 def extract_text_from_docx(docx_file):
