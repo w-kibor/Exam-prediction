@@ -1,0 +1,10 @@
+streamlit
+pandas
+scikit-learn
+joblib
+os
+re
+Document
+TfidfVectorizer
+Counter
+matplotlib.pyplot
