@@ -7,72 +7,84 @@ from sklearn.feature_extraction.text import TfidfVectorizer
 from collections import Counter
 import matplotlib.pyplot as plt
 
-# ----------------------------
-# Topic tagging function
-# ----------------------------
-def tag_question_with_topics(question_text):
-    topic_map = {
-        "Audio & Sound Processing": ['audio', 'sound', 'sampled', 'rate', 'second', 'bits', 'bit', 'calculate'],
-        "Image & Video Processing": ['image', 'pixel', 'video', 'frames', 'size'],
-        "Compression & Coding": ['compression', 'huffman', 'code', 'coding', 'codeword', 'messages', 'data'],
-        "Multimedia Authoring & Editing": ['authoring', 'editing', 'interface', 'text'],
-        "Multimedia Systems & Theory": ['multimedia', 'systems', 'layer', 'set', 'types', 'used', 'different', 'terms', 'case', 'basic', 'derive', 'distinguish']
-    }
-    tags = []
-    text = question_text.lower()
-    for topic, keywords in topic_map.items():
-        if any(kw in text for kw in keywords):
-            tags.append(topic)
-    return tags
+# --------------------------
+# Helper function to extract text
+# --------------------------
+def extract_text_from_docx(docx_file):
+    doc = Document(docx_file)
+    return "\n".join([para.text for para in doc.paragraphs])
 
-# ----------------------------
-# Streamlit UI
-# ----------------------------
+# --------------------------
+# Helper function to clean text
+# --------------------------
+def clean_text(text):
+    text = text.lower()
+    text = re.sub(r'[^a-z\s]', '', text)
+    return text
+
+# --------------------------
+# Extract topics from text
+# --------------------------
+def extract_topics(text, top_n=10):
+    vectorizer = TfidfVectorizer(stop_words="english", max_features=5000)
+    X = vectorizer.fit_transform([text])
+    words = vectorizer.get_feature_names_out()
+    scores = X.toarray().flatten()
+    word_scores = dict(zip(words, scores))
+    sorted_words = sorted(word_scores.items(), key=lambda x: x[1], reverse=True)
+    return [w for w, s in sorted_words[:top_n]]
+
+# --------------------------
+# Streamlit App
+# --------------------------
 st.title("📘 Past Papers Topic Analyzer & Predictor")
-st.write("Upload a `.docx` past paper and get topic predictions + analysis.")
+st.write("Upload one or more `.docx` past papers to get topic predictions + analysis.")
 
-uploaded = st.file_uploader("Upload a past paper (.docx)", type="docx")
+uploaded_files = st.file_uploader(
+    "Upload past paper(s)",
+    type=["docx"],
+    accept_multiple_files=True
+)
 
-if uploaded:
-    # Extract text
-    doc = Document(uploaded)
-    text = "\n".join([p.text for p in doc.paragraphs if p.text.strip() != ""])
+if uploaded_files:
+    all_text = ""
 
-    # Split into questions (basic split by numbering)
-    raw_questions = re.split(r'\n?\s*\d{1,2}\.\s+', text)
-    questions = []
-    for i, q in enumerate(raw_questions):
-        q = q.strip()
-        if len(q) > 30 and "UNIVERSITY EXAMINATIONS" not in q:
-            questions.append({"No": i, "Text": q, "Topics": tag_question_with_topics(q)})
+    for uploaded_file in uploaded_files:
+        st.subheader(f"📄 {uploaded_file.name}")
+        text = extract_text_from_docx(uploaded_file)
+        cleaned = clean_text(text)
 
-    # Show sample extracted questions
-    st.subheader("📄 Extracted Questions (sample)")
-    for q in questions[:5]:
-        st.markdown(f"**Q{q['No']}**: {q['Text'][:200]}...")
-        st.markdown(f"_Predicted Topics: {', '.join(q['Topics']) if q['Topics'] else 'None'}_")
-        st.write("---")
+        topics = extract_topics(cleaned, top_n=10)
+        st.write("**Top Predicted Topics:**", ", ".join(topics))
 
-    # Topic frequency
-    all_topics = []
-    for q in questions:
-        all_topics.extend(q['Topics'])
-    topic_counts = Counter(all_topics)
+        # Show word frequency plot
+        words = cleaned.split()
+        word_counts = Counter(words)
+        common_words = word_counts.most_common(10)
 
-    st.subheader("📊 Topic Frequency")
-    if topic_counts:
-        fig, ax = plt.subplots(figsize=(8, 5))
-        ax.bar(topic_counts.keys(), topic_counts.values())
-        plt.xticks(rotation=45, ha="right")
+        fig, ax = plt.subplots()
+        ax.bar([w for w, _ in common_words], [c for _, c in common_words])
+        plt.xticks(rotation=45)
+        plt.title("Most Frequent Words in Paper")
         st.pyplot(fig)
-    else:
-        st.info("No topics detected in this file.")
 
-    # TF-IDF keywords (optional quick insight)
-    st.subheader("🔑 Top Keywords")
-    question_texts = [q["Text"] for q in questions]
-    if question_texts:
-        vectorizer = TfidfVectorizer(stop_words="english", max_features=20)
-        X = vectorizer.fit_transform(question_texts)
-        keywords = vectorizer.get_feature_names_out()
-        st.write(", ".join(keywords))
+        all_text += " " + cleaned
+
+    # --------------------------
+    # Combined Analysis
+    # --------------------------
+    if len(uploaded_files) > 1:
+        st.subheader("📊 Combined Analysis of All Papers")
+        combined_topics = extract_topics(all_text, top_n=15)
+        st.write("**Overall Predicted Topics Across Papers:**", ", ".join(combined_topics))
+
+        words = all_text.split()
+        word_counts = Counter(words)
+        common_words = word_counts.most_common(15)
+
+        fig, ax = plt.subplots()
+        ax.bar([w for w, _ in common_words], [c for _, c in common_words])
+        plt.xticks(rotation=45)
+        plt.title("Most Frequent Words Across All Papers")
+        st.pyplot(fig)
+
